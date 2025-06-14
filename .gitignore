@@ -1,3 +1,13 @@
 __pycache__
-dist
-django_bulk_load.egg-info
+dist/
+build/
+*.egg-info/
+django_bulk_load.egg-info/
+django_bulk_load_modern.egg-info/
+.venv/
+uv.lock
+.python-version
+.pypirc
+*.pyc
+*.pyo
+.DS_Store

@@ -1,7 +1,7 @@
 from typing import Sequence, Callable
 
 from django.db import models
-from psycopg2.sql import SQL, Composable, Composed, Identifier
+from psycopg.sql import SQL, Composable, Composed, Identifier
 
 
 def create_temp_table(temp_table_name, source_table_name, column_names):

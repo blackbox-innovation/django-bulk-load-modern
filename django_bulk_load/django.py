@@ -7,7 +7,8 @@ from typing import Any, Iterable, List, NamedTuple, Optional, Tuple, Type
 from django.db import models
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models.options import Options
-from psycopg2.extras import Json
+from django.db.models import BinaryField
+from psycopg.types.json import Json, Jsonb
 
 from .utils import NULL_CHARACTER
 
@@ -71,14 +72,19 @@ def models_to_tsv_buffer(
         row = []
         for include_field in include_fields:
             field_val = django_field_to_value(obj, include_field, connection)
-            if isinstance(field_val, connection.Database.Binary):
-                # We can migrate to psychopg 3 which has more advanced copy commands for binary once we upgrade
-                # Django to 4.1+
+            # Check if this is a BinaryField - psycopg3 may wrap binary data
+            if isinstance(include_field, BinaryField) and field_val is not None:
+                raise ValueError("Binary data is not supported in bulk operations")
+            elif isinstance(field_val, (bytes, memoryview)):
+                # Binary data handling in psycopg3
                 raise ValueError("Binary data is not supported in bulk operations")
             elif field_val is None:
                 row.append(NULL_CHARACTER)
-            elif isinstance(field_val, Json):
-                row.append(field_val.dumps(field_val.adapted))
+            elif isinstance(field_val, (Json, Jsonb)):
+                # In psycopg3, Json/Jsonb objects need to be serialized to JSON string
+                import json
+                # The wrapped value is in the 'obj' attribute for psycopg3
+                row.append(json.dumps(field_val.obj))
             else:
                 row.append(str(field_val))
         tsv_writer.writerow(row)

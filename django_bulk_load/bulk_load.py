@@ -6,8 +6,8 @@ from django.db import connections, router, transaction
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.utils import CursorWrapper
 from django.db.models import AutoField, Model, Field
-from psycopg2.extras import execute_values
-from psycopg2.sql import Composable, SQL
+from psycopg import sql
+from psycopg.sql import Composable, SQL
 
 from .django import (
     django_field_to_query_value,
@@ -30,6 +30,7 @@ from .queries import (
     generate_values_select_query,
     copy_query
 )
+from .sql_utils import execute_values_select
 from .utils import generate_table_name
 
 logger = logging.getLogger(__name__)
@@ -58,10 +59,10 @@ def create_temp_table_and_load(
     )
     tsv_buffer = models_to_tsv_buffer(models, fields, connection=connection)
     cursor.execute(temp_table_query)
-    cursor.copy_expert(
-        copy_query(table_name),
-        tsv_buffer,
-    )
+    # Get the raw psycopg3 cursor from Django's cursor wrapper
+    raw_cursor = cursor.cursor
+    with raw_cursor.copy(copy_query(table_name)) as copy:
+        copy.write(tsv_buffer.getvalue().encode('utf-8'))
 
     return table_name
 
@@ -558,13 +559,18 @@ def bulk_select_model_dicts(
             filter_fields=filter_fields,
             select_for_update=select_for_update
         )
-        sql_string = sql.as_string(cursor.connection)
 
         logger.info(
             "Starting selecting models",
             extra=dict(query_dict_count=len(filter_data), table_name=table_name),
         )
-        execute_values(cursor, sql_string, filter_data, page_size=len(filter_data))
+        
+        if filter_data:
+            # Use the new SQL composition utility for safer and cleaner VALUES handling
+            execute_values_select(cursor, sql, filter_data)
+        else:
+            # No data to query
+            return
         columns = [col[0] for col in cursor.description]
 
         # Map columns to fields so we can later correctly interpret column values
